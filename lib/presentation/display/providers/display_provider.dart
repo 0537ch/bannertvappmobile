@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bannertvapp/data/models/banner_model.dart';
 import 'package:bannertvapp/data/repositories/banner_repository_impl.dart';
 
@@ -40,95 +41,83 @@ class DisplayState {
   }
 }
 
-class DisplayProvider extends ChangeNotifier {
-  final BannerRepositoryImpl _repository = BannerRepositoryImpl();
-  DisplayState _state = DisplayState();
-
-  DisplayState get state => _state;
-
+class DisplayNotifier extends Notifier<DisplayState> {
   Timer? _rotationTimer;
   Timer? _retryTimer;
   int _retryAttempts = 0;
   String? _currentSlug;
   StreamSubscription? _sseSubscription;
 
-  DisplayProvider._internal() {
+  final BannerRepositoryImpl _repository = BannerRepositoryImpl();
+
+  @override
+  DisplayState build() {
+    debugPrint('DisplayNotifier.build() START (hashCode: $hashCode)');
+    ref.onDispose(() {
+      debugPrint('ref.onDispose() CALLED (hashCode: $hashCode)');
+      _rotationTimer?.cancel();
+      debugPrint('  Rotation timer cancelled');
+      _retryTimer?.cancel();
+      debugPrint('  Retry timer cancelled');
+      _sseSubscription?.cancel();
+      debugPrint('  SSE subscription cancelled');
+      debugPrint('DISPOSE COMPLETE (hashCode: $hashCode)');
+    });
     _listenToSse();
-  }
-
-  static DisplayProvider? _instance;
-
-  static DisplayProvider get instance {
-    if (_instance != null) {
-      print('DisplayProvider instance already exists, reusing...');
-      return _instance!;
-    }
-    print('Creating NEW DisplayProvider instance');
-    _instance = DisplayProvider._internal();
-    return _instance!;
-  }
-
-  static void resetInstance() {
-    if (_instance != null) {
-      print('Disposing DisplayProvider instance ${_instance.hashCode}');
-      _instance!.dispose();
-      _instance = null;
-    }
-  }
-
-  void _updateState(DisplayState newState) {
-    _state = newState;
-    notifyListeners();
+    return DisplayState();
   }
 
   Future<void> loadBanners(String slug) async {
-    print('Loading banners for slug: $slug (instance: ${hashCode})');
+    debugPrint('Loading banners for slug: $slug (instance: $hashCode)');
     _currentSlug = slug;
 
-    if (!_state.hasLoadedOnce) {
-      _updateState(_state.copyWith(loading: true, errorMessage: null));
+    if (!state.hasLoadedOnce) {
+      state = state.copyWith(loading: true, errorMessage: null);
     } else {
-      print('Refreshing banners...');
-      _updateState(_state.copyWith(refreshing: true));
-
-      // Delay untuk memastikan refreshing indicator terlihat
+      debugPrint('Refreshing banners...');
+      state = state.copyWith(refreshing: true);
       await Future.delayed(Duration(milliseconds: 500));
     }
 
     try {
       final banners = await _repository.getBanners(slug);
-      print('Loaded ${banners.length} banners (instance: ${hashCode})');
+      debugPrint('Loaded ${banners.length} banners (instance: $hashCode)');
 
       if (banners.isEmpty) {
-        _updateState(_state.copyWith(
+        state = state.copyWith(
           banners: banners,
+          currentIndex: 0,
           loading: false,
           refreshing: false,
           hasLoadedOnce: true,
-        ));
+        );
         return;
       }
 
-      _updateState(_state.copyWith(
+      // Validate currentIndex is within bounds
+      final safeIndex = state.currentIndex < banners.length ? state.currentIndex : 0;
+
+      state = state.copyWith(
         banners: banners,
+        currentIndex: safeIndex,
         loading: false,
         refreshing: false,
         hasLoadedOnce: true,
         errorMessage: null,
-      ));
+      );
 
       _resetRetryCount();
       _startRotation();
     } catch (e) {
-      print('Error loading banners: $e');
-      if (!_state.hasLoadedOnce) {
-        _updateState(_state.copyWith(
+      debugPrint('Error loading banners: $e');
+      if (!state.hasLoadedOnce) {
+        state = state.copyWith(
           loading: false,
           errorMessage: 'Failed to load banners',
-        ));
+        );
         _autoRetry();
       } else {
-        _updateState(_state.copyWith(refreshing: false));
+        state = state.copyWith(refreshing: false);
         _autoRetry();
       }
     }
@@ -137,9 +126,9 @@ class DisplayProvider extends ChangeNotifier {
   void _startRotation() {
     _rotationTimer?.cancel();
 
-    if (_state.banners.isEmpty) return;
+    if (state.banners.isEmpty) return;
 
-    final currentBanner = _state.banners[_state.currentIndex];
+    final currentBanner = state.banners[state.currentIndex];
 
     if (currentBanner.type == 'video') {
       return;
@@ -153,10 +142,10 @@ class DisplayProvider extends ChangeNotifier {
   }
 
   void _nextSlide() {
-    if (_state.banners.isEmpty) return;
+    if (state.banners.isEmpty) return;
 
-    final nextIndex = (_state.currentIndex + 1) % _state.banners.length;
-    _updateState(_state.copyWith(currentIndex: nextIndex));
+    final nextIndex = (state.currentIndex + 1) % state.banners.length;
+    state = state.copyWith(currentIndex: nextIndex);
     _startRotation();
   }
 
@@ -178,44 +167,40 @@ class DisplayProvider extends ChangeNotifier {
     _retryTimer?.cancel();
   }
 
-  void _listenToSse() {
-    print('Listening to SSE events... (instance: ${hashCode})');
-    _sseSubscription = _repository.getSyncEvents().listen(
+  void _listenToSse() async {
+    debugPrint('STARTING SSE CONNECTION (hashCode: $hashCode)');
+    final stream = await _repository.getSyncEvents();
+    _sseSubscription = stream.listen(
       (_) {
-        print('SSE event received, reloading banners... (instance: ${hashCode})');
+        debugPrint('SSE EVENT RECEIVED (hashCode: $hashCode)');
         if (_currentSlug != null) {
           loadBanners(_currentSlug!);
         }
       },
       onError: (error) {
-        print('SSE error: $error, reconnecting in 5 seconds... (instance: ${hashCode})');
-        // Auto-reconnect after delay
+        debugPrint('SSE ERROR: $error (hashCode: $hashCode)');
+        debugPrint('Reconnecting in 5 seconds...');
         Future.delayed(Duration(seconds: 5), () {
           if (_currentSlug != null) {
-            print('Reconnecting SSE...');
+            debugPrint('SSE RECONNECTING...');
             _listenToSse();
           }
         });
       },
       onDone: () {
-        print('SSE connection closed, reconnecting in 5 seconds... (instance: ${hashCode})');
-        // Connection closed, reconnect
+        debugPrint('SSE CONNECTION CLOSED (hashCode: $hashCode)');
+        debugPrint('Reconnecting in 5 seconds...');
         Future.delayed(Duration(seconds: 5), () {
           if (_currentSlug != null) {
-            print('Reconnecting SSE...');
+            debugPrint('SSE RECONNECTING...');
             _listenToSse();
           }
         });
       },
     );
+    debugPrint('SSE LISTENER ATTACHED (hashCode: $hashCode)');
   }
 
-  @override
-  void dispose() {
-    print('Disposing DisplayProvider (instance: ${hashCode})');
-    _rotationTimer?.cancel();
-    _retryTimer?.cancel();
-    _sseSubscription?.cancel();
-    super.dispose();
-  }
 }
+
+final displayProvider = NotifierProvider<DisplayNotifier, DisplayState>(DisplayNotifier.new);

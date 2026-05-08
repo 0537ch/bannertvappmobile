@@ -4,5 +4,5 @@ import 'package:bannertvapp/data/models/location_model.dart';
 abstract class BannerRepository {
   Future<List<BannerModel>> getBanners(String slug);
   Future<List<LocationModel>> getLocations();
-  Stream<void> getSyncEvents();
+  Future<Stream<void>> getSyncEvents();
 }

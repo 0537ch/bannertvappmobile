@@ -15,23 +15,41 @@ class LocationDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<LocationModel>(
-      initialValue: selectedLocation,
-      decoration: InputDecoration(
-        labelText: 'Select Location',
-        border: OutlineInputBorder(),
-        filled: true,
-      ),
-      items: locations.map((location) {
-        return DropdownMenuItem(
-          value: location,
-          child: Text(location.name),
-        );
-      }).toList(),
-      onChanged: (location) {
-        if (location != null) {
-          onSelected(location);
+    return Autocomplete<LocationModel>(
+      initialValue: TextEditingValue(text: selectedLocation?.name ?? ''),
+      optionsBuilder: (TextEditingValue textEditingValue) {
+        if (textEditingValue.text.isEmpty) {
+          return locations;
         }
+        return locations.where((LocationModel option) {
+          return option.name.toLowerCase().contains(textEditingValue.text.toLowerCase());
+        });
+      },
+      displayStringForOption: (LocationModel option) => option.name,
+      onSelected: (LocationModel selection) {
+        onSelected(selection);
+      },
+      fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+        final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+        return TextField(
+          controller: textEditingController,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            labelText: 'Search Location',
+            border: OutlineInputBorder(),
+            filled: true,
+            suffixIcon: Icon(Icons.search),
+            contentPadding: EdgeInsets.only(
+              top: 12,
+              bottom: 12 + bottomPadding,
+              left: 16,
+              right: 16,
+            ),
+          ),
+          onSubmitted: (String value) {
+            onFieldSubmitted();
+          },
+        );
       },
     );
   }

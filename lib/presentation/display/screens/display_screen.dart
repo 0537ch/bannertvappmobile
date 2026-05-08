@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bannertvapp/presentation/display/providers/display_provider.dart';
 import 'package:bannertvapp/presentation/display/widgets/image_banner.dart';
 import 'package:bannertvapp/presentation/display/widgets/video_banner.dart';
@@ -8,57 +8,31 @@ import 'package:bannertvapp/presentation/display/widgets/floating_settings_butto
 import 'package:bannertvapp/presentation/settings/screens/settings_screen.dart';
 import 'package:bannertvapp/data/models/location_model.dart';
 
-class DisplayScreen extends StatefulWidget {
+class DisplayScreen extends ConsumerStatefulWidget {
   final LocationModel location;
 
   const DisplayScreen({super.key, required this.location});
 
   @override
-  State<DisplayScreen> createState() => _DisplayScreenState();
+  ConsumerState<DisplayScreen> createState() => _DisplayScreenState();
 }
 
-class _DisplayScreenState extends State<DisplayScreen> with WidgetsBindingObserver {
-  late final DisplayProvider _displayProvider;
-
+class _DisplayScreenState extends ConsumerState<DisplayScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-
-    // ALWAYS reset instance first, then create new
-    print('DisplayScreen initState - resetting provider');
-    DisplayProvider.resetInstance();
-    _displayProvider = DisplayProvider.instance;
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _displayProvider.loadBanners(widget.location.slug);
+      ref.read(displayProvider.notifier).loadBanners(widget.location.slug);
     });
-  }
-
-  // No longer needed - handled in initState/dispose
-
-  @override
-  void dispose() {
-    print('DisplayScreen dispose - resetting provider');
-    WidgetsBinding.instance.removeObserver(this);
-    DisplayProvider.resetInstance();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: ListenableBuilder(
-        listenable: _displayProvider,
-        builder: (context, child) {
-          final state = _displayProvider.state;
-
-          return state.banners.isEmpty
-              ? _buildEmptyState(state)
-              : _buildBannerCarousel(state);
-        },
-      ),
+      body: ref.watch(displayProvider).banners.isEmpty
+          ? _buildEmptyState(ref.watch(displayProvider))
+          : _buildBannerCarousel(ref.watch(displayProvider)),
     );
   }
 
@@ -156,7 +130,7 @@ class _DisplayScreenState extends State<DisplayScreen> with WidgetsBindingObserv
       return VideoBanner(
         banner: banner,
         onEnded: () {
-          _displayProvider.loadBanners(widget.location.slug);
+          ref.read(displayProvider.notifier).loadBanners(widget.location.slug);
         },
       );
     }

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bannertvapp/data/models/location_model.dart';
 import 'package:bannertvapp/data/repositories/banner_repository_impl.dart';
 
@@ -30,51 +31,39 @@ class LocationSelectionState {
   }
 }
 
-class LocationSelectionProvider extends ChangeNotifier {
+class LocationSelectionNotifier extends Notifier<LocationSelectionState> {
   final BannerRepositoryImpl _repository = BannerRepositoryImpl();
-  LocationSelectionState _state = LocationSelectionState();
 
-  LocationSelectionState get state => _state;
-
-  LocationSelectionProvider._internal() {
-    loadLocations();
-  }
-
-  static LocationSelectionProvider? _instance;
-
-  static LocationSelectionProvider get instance {
-    _instance ??= LocationSelectionProvider._internal();
-    return _instance!;
-  }
-
-  static void resetInstance() {
-    _instance?.dispose();
-    _instance = null;
-  }
-
-  void _updateState(LocationSelectionState newState) {
-    _state = newState;
-    notifyListeners();
+  @override
+  LocationSelectionState build() {
+    debugPrint('LocationSelectionNotifier.build() called');
+    return LocationSelectionState();
   }
 
   Future<void> loadLocations() async {
-    _updateState(_state.copyWith(loading: true, errorMessage: null));
+    debugPrint('loadLocations() started');
+    state = state.copyWith(loading: true, errorMessage: null, selectedLocation: null);
 
     try {
+      debugPrint('Fetching locations from repository...');
       final locations = await _repository.getLocations();
-      _updateState(_state.copyWith(
+      debugPrint('Got ${locations.length} locations');
+      state = state.copyWith(
         locations: locations,
         loading: false,
-      ));
+      );
     } catch (e) {
-      _updateState(_state.copyWith(
+      debugPrint('Error loading locations: $e');
+      state = state.copyWith(
         loading: false,
         errorMessage: 'Failed to load locations',
-      ));
+      );
     }
   }
 
   void selectLocation(LocationModel location) {
-    _updateState(_state.copyWith(selectedLocation: location));
+    state = state.copyWith(selectedLocation: location);
   }
 }
+
+final locationSelectionProvider = NotifierProvider<LocationSelectionNotifier, LocationSelectionState>(LocationSelectionNotifier.new);

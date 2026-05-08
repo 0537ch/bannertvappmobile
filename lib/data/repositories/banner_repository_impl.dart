@@ -28,7 +28,7 @@ class BannerRepositoryImpl implements BannerRepository {
   }
 
   @override
-  Stream<void> getSyncEvents() {
+  Future<Stream<void>> getSyncEvents() async {
     return _apiClient.sse('/api/banner/events');
   }
 }
