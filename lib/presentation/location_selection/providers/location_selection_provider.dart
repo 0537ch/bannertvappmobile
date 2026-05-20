@@ -56,7 +56,7 @@ class LocationSelectionNotifier extends Notifier<LocationSelectionState> {
       debugPrint('Error loading locations: $e');
       state = state.copyWith(
         loading: false,
-        errorMessage: 'Failed to load locations',
+        errorMessage: 'Failed to load locations: $e',
       );
     }
   }

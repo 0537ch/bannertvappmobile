@@ -6,16 +6,20 @@ import 'package:bannertvapp/data/models/banner_model.dart';
 import 'package:bannertvapp/data/repositories/banner_repository_impl.dart';
 
 class DisplayState {
+  final List<BannerModel> slides;
   final List<BannerModel> banners;
   final int currentIndex;
+  final int bannerCount;
   final bool loading;
   final bool refreshing;
   final bool hasLoadedOnce;
   final String? errorMessage;
 
   DisplayState({
+    this.slides = const [],
     this.banners = const [],
     this.currentIndex = 0,
+    this.bannerCount = 0,
     this.loading = true,
     this.refreshing = false,
     this.hasLoadedOnce = false,
@@ -23,16 +27,20 @@ class DisplayState {
   });
 
   DisplayState copyWith({
+    List<BannerModel>? slides,
     List<BannerModel>? banners,
     int? currentIndex,
+    int? bannerCount,
     bool? loading,
     bool? refreshing,
     bool? hasLoadedOnce,
     String? errorMessage,
   }) {
     return DisplayState(
+      slides: slides ?? this.slides,
       banners: banners ?? this.banners,
       currentIndex: currentIndex ?? this.currentIndex,
+      bannerCount: bannerCount ?? this.bannerCount,
       loading: loading ?? this.loading,
       refreshing: refreshing ?? this.refreshing,
       hasLoadedOnce: hasLoadedOnce ?? this.hasLoadedOnce,
@@ -67,6 +75,32 @@ class DisplayNotifier extends Notifier<DisplayState> {
     return DisplayState();
   }
 
+  List<BannerModel> _expandBanners(List<BannerModel> banners) {
+    final slides = <BannerModel>[];
+    for (final banner in banners) {
+      if (banner.type == 'event' && banner.eventEntries != null && banner.eventEntries!.isNotEmpty) {
+        for (final entry in banner.eventEntries!) {
+          slides.add(BannerModel(
+            id: int.parse('${banner.id}${entry.id}'),
+            type: 'event',
+            url: entry.pictureUrl,
+            duration: entry.duration ?? banner.duration,
+            title: entry.name,
+            description: null,
+            imageSource: null,
+            position: 0,
+            active: true,
+            eventEntries: null,
+            eventEntryId: entry.id,
+          ));
+        }
+      } else {
+        slides.add(banner);
+      }
+    }
+    return slides;
+  }
+
   Future<void> loadBanners(String slug) async {
     debugPrint('Loading banners for slug: $slug (instance: $hashCode)');
     _currentSlug = slug;
@@ -85,8 +119,10 @@ class DisplayNotifier extends Notifier<DisplayState> {
 
       if (banners.isEmpty) {
         state = state.copyWith(
-          banners: banners,
+          banners: [],
+          slides: [],
           currentIndex: 0,
+          bannerCount: 0,
           loading: false,
           refreshing: false,
           hasLoadedOnce: true,
@@ -94,12 +130,14 @@ class DisplayNotifier extends Notifier<DisplayState> {
         return;
       }
 
-      // Validate currentIndex is within bounds
-      final safeIndex = state.currentIndex < banners.length ? state.currentIndex : 0;
+      final slides = _expandBanners(banners);
+      final safeIndex = state.currentIndex < slides.length ? state.currentIndex : 0;
 
       state = state.copyWith(
         banners: banners,
+        slides: slides,
         currentIndex: safeIndex,
+        bannerCount: banners.length,
         loading: false,
         refreshing: false,
         hasLoadedOnce: true,
@@ -126,15 +164,15 @@ class DisplayNotifier extends Notifier<DisplayState> {
   void _startRotation() {
     _rotationTimer?.cancel();
 
-    if (state.banners.isEmpty) return;
+    if (state.slides.isEmpty) return;
 
-    final currentBanner = state.banners[state.currentIndex];
+    final currentSlide = state.slides[state.currentIndex];
 
-    if (currentBanner.type == 'video') {
+    if (currentSlide.type == 'video') {
       return;
     }
 
-    final duration = currentBanner.duration > 0 ? currentBanner.duration : 10;
+    final duration = currentSlide.duration > 0 ? currentSlide.duration : 10;
 
     _rotationTimer = Timer(Duration(seconds: duration), () {
       _nextSlide();
@@ -142,9 +180,9 @@ class DisplayNotifier extends Notifier<DisplayState> {
   }
 
   void _nextSlide() {
-    if (state.banners.isEmpty) return;
+    if (state.slides.isEmpty) return;
 
-    final nextIndex = (state.currentIndex + 1) % state.banners.length;
+    final nextIndex = (state.currentIndex + 1) % state.slides.length;
     state = state.copyWith(currentIndex: nextIndex);
     _startRotation();
   }

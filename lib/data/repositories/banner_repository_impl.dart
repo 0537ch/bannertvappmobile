@@ -13,7 +13,7 @@ class BannerRepositoryImpl implements BannerRepository {
     final bannersJson = data['banners'] as List;
     return bannersJson
         .map((json) => BannerModel.fromJson(json as Map<String, dynamic>))
-        .where((banner) => banner.active && (banner.type == 'image' || banner.type == 'video'))
+        .where((banner) => banner.active && (banner.type == 'image' || banner.type == 'video' || banner.type == 'event'))
         .toList();
   }
 
